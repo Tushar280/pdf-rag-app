@@ -1,4 +1,4 @@
-from rag.embeddings.py import SentenceTransformerEmbeddings
+from rag.embeddings import SentenceTransformerEmbeddings
 from rag.vectorstore import get_vectorstore
 from rag.pdf_loader import extract_text_by_page
 from rag.text_splitter import chunk_texts
@@ -13,17 +13,16 @@ def ingest_pdfs(paths):
         chunks = chunk_texts(texts)
         all_chunks.extend(chunks)
     store = get_vectorstore(384)
-    emb = embedder.encode([c['text'] for c in all_chunks])
+    embeddings = embedder.encode([c['text'] for c in all_chunks])
     ids = [c['id'] for c in all_chunks]
-    metas = [{"filename": c['filename'], "page": c['page'], "text": c['text']} for c in all_chunks]
-    store.add(emb, metas, ids)
+    metadatas = [{"filename": c['filename'], "page": c['page'], "text": c['text']} for c in all_chunks]
+    store.add(embeddings, metadatas, ids)
     store.persist()
     return {"chunks_added": all_chunks}
 
 def answer_question(query, top_k=3):
     embedder = SentenceTransformerEmbeddings()
     store = get_vectorstore(384)
-    qvec = embedder.encode([query])
     docs = retrieve(embedder, store, query, top_k=top_k)
     prompt = make_prompt(query, docs)
     llm = get_llm()

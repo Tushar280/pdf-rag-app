@@ -1,28 +1,49 @@
+import os
 import streamlit as st
 from rag.rag_pipeline import ingest_pdfs, answer_question
-import os
+from rag.config import PDF_STORAGE_DIR
+from rag.utils import ensure_dir
 
-st.title("PDF RAG App – Ask Questions From Your PDFs")
+st.set_page_config(page_title="PDF RAG App", page_icon="📄", layout="wide")
 
-uploaded_files = st.sidebar.file_uploader("Upload PDFs", type='pdf', accept_multiple_files=True)
-if uploaded_files:
-    local_paths = []
-    for file in uploaded_files:
-        path = f"data/pdfs/{file.name}"
-        with open(path, "wb") as f:
-            f.write(file.read())
-        local_paths.append(path)
+st.title("📄 PDF RAG App")
+st.caption("Upload PDFs → Embed → Ask questions with sources and page numbers")
+
+with st.sidebar:
+    st.header("Upload PDFs")
+    uploaded = st.file_uploader("Select one or more PDFs", accept_multiple_files=True, type=["pdf"])
     if st.button("Ingest PDFs"):
-        with st.spinner("Ingesting PDFs..."):
-            res = ingest_pdfs(local_paths)
-            st.success(f"Ingested {len(res['chunks_added'])} chunks.")
+        if not uploaded:
+            st.warning("Please select at least one PDF.")
+        else:
+            ensure_dir(PDF_STORAGE_DIR)
+            local_paths = []
+            for file in uploaded:
+                path = os.path.join(PDF_STORAGE_DIR, file.name)
+                with open(path, "wb") as f:
+                    f.write(file.getbuffer())
+                local_paths.append(path)
+            with st.status("Ingesting PDFs...", expanded=True):
+                res = ingest_pdfs(local_paths)
+            st.success(f"Ingested {res['chunks_added']} chunks.")
 
-query = st.text_input("Ask a question:")
-top_k = st.slider("Retrieved Chunks", 1, 10, 3)
+st.header("Ask a question")
+query = st.text_input("Enter your question about the uploaded PDFs")
+
+col1, col2 = st.columns([1,2])
+with col1:
+    top_k = st.slider("Top-K", 1, 10, 5)
+
 if st.button("Get Answer"):
-    with st.spinner("RAG pipeline running..."):
-        res = answer_question(query, top_k=top_k)
-        st.markdown("### Answer")
+    if not query.strip():
+        st.warning("Please enter a question.")
+    else:
+        with st.spinner("Thinking..."):
+            res = answer_question(query, top_k=top_k)
+        st.subheader("Answer")
         st.write(res["answer"])
-        st.markdown("### Sources")
-        st.write("\n".join(res["sources"]))
+
+        st.subheader("Sources")
+        for s in res["sources"]:
+            st.markdown(f"- {s['filename']} — page {s['page']} — score {s['score']:.3f}")
+            st.code(s["snippet"])
